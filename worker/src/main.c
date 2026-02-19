@@ -3,11 +3,12 @@
 #include <string.h>
 
 #define NOB_IMPLEMENTATION
+#define INSTPOW_IMPL
 #include "../thirdparty/nob.h"
 #include "../thirdparty/jsmn.h"
 
 #define NOB_STRIP_PREFIX
-
+#include "../include/instpow.h"
 
 
 /*
@@ -100,7 +101,37 @@ defer:
 }
 
 
+const char* ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
+const int   BASE     = 36;
+
+int getCombinationByIndex(char* buf, int32_t bufLen, int32_t index) {
+	if (index < 0 || instantPow(bufLen - 2) == (uint64_t)-1) {
+		return -1;
+	}
+
+	for (int i = 0; i < bufLen - 1; ++i) {
+		int64_t pow = instantPow(bufLen - 2 - i);
+		buf[i] = ALPHABET[index / pow];
+		index -= (index / pow) * pow;
+		if (index < 0) {
+			index = 0;
+		}
+	}
+	buf[bufLen - 1] = '\0';
+	return 0;
+}
+
+
 int main(void) {
+	nob_log(INFO, "alphabet len: %lu", strlen(ALPHABET));
+	char comb[10] = {0};
+	for (uint32_t i = 0; i < 2176782336; ++i) {
+		getCombinationByIndex(comb, 10, i);
+		nob_log(INFO, "COMB: %s", comb);
+	}	
+}
+
+int main2(void) {
     nob_log(NOB_INFO, "Start...");	
 	Task t = {0};
 	
@@ -108,6 +139,8 @@ int main(void) {
 	if (res != 0) {
 		return res;
 	}
+
+
 	nob_log(NOB_INFO, "Deserialize: \n%s", TaskToString(&t));
 
 	return 0;

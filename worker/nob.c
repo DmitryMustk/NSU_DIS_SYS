@@ -17,6 +17,14 @@ int main(int argc, char** argv) {
 
 	Cmd cmd = {0};
 
+	if (needs_rebuild1("./include/instpow.h", "./instpow.py")) {
+		cmd_append(&cmd, "python3", "instpow.py");
+		if (!cmd_run(&cmd)) {
+			nob_log(ERROR, "Can't rebuild instpow but it is need to. Do it manualy! ");
+			return EXIT_FAILURE;
+		}
+	}
+
 	cmd_append(&cmd, "cc", "-Wall", "-Wextra", "-O3", "-o", BUILD_FOLDER"worker", SRC_FOLDER"main.c");
 	if (!cmd_run(&cmd)) {
 		return EXIT_FAILURE;
