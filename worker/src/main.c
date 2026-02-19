@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
@@ -108,7 +109,7 @@ int getCombinationByIndex(char* buf, int32_t bufLen, int32_t index) {
 	if (index < 0 || instantPow(bufLen - 2) == (uint64_t)-1) {
 		return -1;
 	}
-
+	//36 -> aa
 	for (int i = 0; i < bufLen - 1; ++i) {
 		int64_t pow = instantPow(bufLen - 2 - i);
 		buf[i] = ALPHABET[index / pow];
@@ -121,13 +122,24 @@ int getCombinationByIndex(char* buf, int32_t bufLen, int32_t index) {
 	return 0;
 }
 
+int32_t getSizeForIndex(int32_t index) {
+	int maxPow = getMaxPow();
+	for (int i = maxPow - 1; i > 0; --i) {
+		if ((uint64_t)index >= instantPow(i)) {
+			return i + 1;
+		}
+	}
+
+	return 1;
+}
 
 int main(void) {
 	nob_log(INFO, "alphabet len: %lu", strlen(ALPHABET));
-	char comb[10] = {0};
-	for (uint32_t i = 0; i < 2176782336; ++i) {
-		getCombinationByIndex(comb, 10, i);
-		nob_log(INFO, "COMB: %s", comb);
+	for (uint32_t i = 0; i < 2000; ++i) {
+		int32_t size = getSizeForIndex(i) + 1;
+		char comb[size] = {};
+		getCombinationByIndex(comb, size, i);
+		nob_log(INFO, "COMB: %s for idx: %d", comb, i);
 	}	
 }
 
