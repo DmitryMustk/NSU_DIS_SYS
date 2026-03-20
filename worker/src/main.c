@@ -2,109 +2,24 @@
 #include <stddef.h>
 #include <string.h>
 
+#include <omp.h>
+
 #define NOB_IMPLEMENTATION
-#define INSTPOW_IMPL
+#define MD5_IMPLEMENTATION
 #include "../thirdparty/nob.h"
-#include "../thirdparty/jsmn.h"
+#include "../thirdparty/md5.h"
 
 #define NOB_STRIP_PREFIX
+
+#define INSTPOW_IMPL
+#define DTO_IMPL
 #include "../include/instpow.h"
-
-
-/*
-{
-  "taskId": "70c26e4e-0d51-11f1-a84d-73f4fbe1eca2",
-  "requestId": "730a04e6-4de9-41f9-9d5b-53b88b17afac",
-  "startIndex": 0,
-  "count": 100000,
-  "targetHash": "e2fc714c4727ee9395f324cd2e7f331f",
-  "maxLength": 4
-}
-*/
-
-typedef struct Task {
-	char*	taskId;
-	char*	requestId;
-	int32_t startIndex;
-	int32_t count;
-	char*	targetHash;
-	int16_t maxLength;
-} Task;
-
-char* TaskToString(Task* task) {
-	return temp_sprintf("Task: {\n\ttaskId: %s,\n\trequestId: %s,\n\tstartIndex: %d,\n\tcount: %d,\n\ttargetHash: %s,\n\tmaxLength: %d,\n}",
-			task->taskId,
-			task->requestId,
-			task->startIndex,
-			task->count,
-			task->targetHash,
-			task->maxLength
-		);
-}
-
-
-static int jsonEq(const char* json, jsmntok_t* tok, const char *fieldName) {
-	if (tok->type == JSMN_STRING && (int)strlen(fieldName) == tok->end - tok->start &&
-			strncmp(json + tok->start, fieldName, tok->end - tok->start) == 0) {
-		return 0;
-	}
-
-	return -1;
-}
-
-
-int parseTask(Task* task) {
-	int result = 0;
-	String_Builder sb = {0};
-	read_entire_file("./src/task.json", &sb);
-	nob_log(NOB_INFO, "READ: %s", sb.items);
-
-	jsmn_parser p;
-	jsmntok_t t[128];
-
-	jsmn_init(&p);
-	int tokCount = jsmn_parse(&p, sb.items, sb.count, t, ARRAY_LEN(t));
-	if (tokCount < 0) {
-		nob_log(NOB_ERROR, "Failed to parse JSON: %d", result);
-		return_defer(-1);
-	}
-
-	if (tokCount < 1 || t[0].type != JSMN_OBJECT) {
-		nob_log(NOB_ERROR, "Object expected: %d", result);
-		return_defer(-1);
-	}
-
-	for (int i = 1; i < tokCount; ++i) {
-		if (jsonEq(sb.items, &t[i], "taskId") == 0) {
-			task->taskId = temp_strndup(sb.items + t[i + 1].start, t[i + 1].end - t[i + 1].start);
-		}
-		else if (jsonEq(sb.items, &t[i], "requestId") == 0) {
-			task->requestId = temp_strndup(sb.items + t[i + 1].start, t[i + 1].end - t[i + 1].start);
-		}
-		else if (jsonEq(sb.items, &t[i], "startIndex") == 0) {
-			task->startIndex = strtol(sb.items + t[i + 1].start, NULL, 10);
-		}
-		else if (jsonEq(sb.items, &t[i], "count") == 0) {
-			task->count = strtol(sb.items + t[i + 1].start, NULL, 10);
-		}
-		else if (jsonEq(sb.items, &t[i], "targetHash") == 0) {
-			task->targetHash = temp_strndup(sb.items + t[i + 1].start, t[i + 1].end - t[i + 1].start);
-		}
-		else if (jsonEq(sb.items, &t[i], "maxLength") == 0) {
-			task->maxLength = strtol(sb.items + t[i + 1].start, NULL, 10);
-		}
-	}
-	
-defer:
-	sb_free(sb);
-	return 0;
-}
-
+#include "../include/dto.h"
 
 const char ALPHABET[] = "abcdefghijklmnopqrstuvwxyz0123456789";
-const int   BASE     = 36;
+const int  BASE       = 36;
 
-uint64_t instpowPartSome(int to) {
+uint64_t instpowPartSum(const int to) {
 	uint64_t sum = 0;
 	for (int i = 0; i <= to; ++i) {
 		sum += instantPow(i);
@@ -113,68 +28,86 @@ uint64_t instpowPartSome(int to) {
 	return sum;
 }
 
-int getCombinationByIndex(char* buf, int32_t bufLen, int32_t index) {
-	if (index < 0 || instantPow(bufLen - 2) == (uint64_t)-1) {
+int getCombinationByIndex(char* const buf, const uint32_t bufLen, uint64_t index) {
+	if (instantPow(bufLen - 2) == (uint64_t)-1) {
 		return -1;
 	}
-	//35 ->  9
-	//36 -> aa
-	//37 -> ab
-	//71 -> a9 / b9 (107)
-	for (int i = 0; i < bufLen - 1; ++i) {
-		int64_t pow = instantPow(bufLen - 2 - i);
-		int alphabetPos = index - pow;
-		if (pow == 1) {
-			alphabetPos += 1;
-		}
-		buf[i] = ALPHABET[(alphabetPos) / pow];
-		index -= (index / pow) * pow;
-		if (index < 0) {
-			index = 0;
-		}
+
+	index -= (instpowPartSum(bufLen - 2) - 1);
+	for (int i = bufLen - 2; i >= 0; i--) {
+		buf[i] = ALPHABET[index % BASE];
+		index /= BASE;
 	}
 	buf[bufLen - 1] = '\0';
 	return 0;
 }
 
 
-int32_t getSizeForIndex(int32_t index) {
+uint32_t getSizeForIndex(const uint64_t index) {
 	int maxPow = getMaxPow();
 	for (int i = maxPow - 1; i > 0; --i) {
-		if ((uint64_t)index + 1 >= instpowPartSome(i)) {
+		if (index + 1 >= instpowPartSum(i)) {
 			return i + 1;
 		}
 	}
-
 	return 1;
 }
 
-int main(void) {
-	nob_log(INFO, "alphabet len: %lu", strlen(ALPHABET));
-	int count = 0;
-	for (uint32_t i = 0; i < 4000; ++i) {
-		int32_t size = getSizeForIndex(i) + 1;
-		if (size == 4) {
-			break;
-		}
-		char comb[size] = {};
-		getCombinationByIndex(comb, size, i);
-		nob_log(INFO, "COMB: %s for idx: %d", comb, i);
-	}
-	nob_log(INFO, "For size 3  %d combs", count);
-}
-
-int main2(void) {
-    nob_log(NOB_INFO, "Start...");	
-	Task t = {0};
-	
-	int res = parseTask(&t);
+int getTask(Task* const t) {
+	String_Builder sb = {};
+	nob_read_entire_file("./src/task.json", &sb);
+	int res = parseTask(t, sb.items, sb.count);
 	if (res != 0) {
 		return res;
 	}
+	return 0;
+}
 
+void bytesToHex(const uint8_t* const bytes, const size_t bytesSize, char* const hex, const size_t hexSize) {
+	for (size_t i = 0; i < bytesSize; ++i) {
+		sprintf(hex + i * 2, "%02x", bytes[i]);
+	}
+	hex[hexSize - 1] = '\0';
+}
 
-	nob_log(NOB_INFO, "Deserialize: \n%s", TaskToString(&t));
+int main(void) {
+	#pragma omp parallel
+	{                                                                                    
+		#pragma omp single                                                             
+		nob_log(NOB_INFO, "Start bruting using %d threads", omp_get_num_threads());                    
+	}
+
+	Task t = {0};
+	if (getTask(&t) != 0) {
+		nob_log(NOB_ERROR, "Can't get task...");
+		return -1;
+	}
+	
+	int found = 0;
+	#pragma omp parallel for shared(found)
+	for (uint64_t i = t.startIndex; i < t.startIndex + t.count; ++i) {
+		if (found) continue;
+
+		const uint32_t size = getSizeForIndex(i) + 1;
+		char comb[size];
+		memset(comb, 0, size);
+		getCombinationByIndex(comb, size, i);
+
+		uint8_t hash[MD5_HASH_SIZE];
+		md5String(comb, hash);
+
+		char hex[33];
+		bytesToHex(hash, MD5_HASH_SIZE, hex, MD5_HASH_SIZE * 2 + 1);
+
+		if (strcmp(hex, t.targetHash) == 0) {
+			nob_log(NOB_INFO, "FOUND: %s", comb);
+			found = 1;
+		}
+	}
+
+	if (!found) {
+		nob_log(NOB_INFO, "Not found combination for %s hash", t.targetHash);
+	}
 
 	return 0;
 }

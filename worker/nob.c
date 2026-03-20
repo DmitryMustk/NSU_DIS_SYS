@@ -40,10 +40,8 @@ int main(int argc, char** argv) {
 		}
 
 	}
-	
 
-
-	cmd_append(&cmd, "cc", "-Wall", "-Wextra", "-O3", "-o", BUILD_FOLDER"worker", SRC_FOLDER"main.c");
+	cmd_append(&cmd, "gcc", "-fopenmp", "-Wall", "-Wextra", "-O3", "-o", BUILD_FOLDER"worker", SRC_FOLDER"main.c");
 	if (!cmd_run(&cmd)) {
 		return EXIT_FAILURE;
 	}

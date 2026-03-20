@@ -67,25 +67,124 @@ def indentStruct(structCode):
     return structCode
 
 
-def generateStruct(file):
+def readDtoFile(file):
     try:
         with open(file, 'r') as fileData:
-            content = fileData.read()
+            return fileData.read()
     except FileNotFoundError:
         print(f"Error: The file '{file}' was not found.")
-    
+        return None
+
+def generateStruct(content):
     lines = content.split("\n")
     structCode = f"typedef struct {lines[0]} {{\n"
     structCode += '\n'.join([fieldFromLine(line) for line in lines if ':' in line])
     structCode += f"\n}} {lines[0]};\n"
     structCode = indentStruct(structCode)
-    return structCode 
-    
+    return structCode
+
+def parseAssignment(varName, fieldName, fieldType):
+    tok_val = f"json + t[i + 1].start, t[i + 1].end - t[i + 1].start"
+    if fieldType == 'char*':
+        return f"\t\t\t{varName}->{fieldName} = temp_strndup({tok_val});\n"
+    elif fieldType == 'uint64_t':
+        return f"\t\t\t{varName}->{fieldName} = strtol(json + t[i + 1].start, NULL, 10);\n"
+    elif fieldType == 'char**':
+        code  = f"\t\t\tint arrSize_{fieldName} = t[i + 1].size;\n"
+        code += f"\t\t\t{varName}->{fieldName} = temp_alloc(sizeof(char*) * arrSize_{fieldName});\n"
+        code += f"\t\t\tfor (int j = 0; j < arrSize_{fieldName}; ++j) {{\n"
+        code += f"\t\t\t\t{varName}->{fieldName}[j] = temp_strndup(json + t[i + 2 + j].start, t[i + 2 + j].end - t[i + 2 + j].start);\n"
+        code += f"\t\t\t}}\n"
+        code += f"\t\t\ti += arrSize_{fieldName} + 1;\n"
+        return code
+    else:
+        return f"\t\t\t// TODO: unsupported type {fieldType} for {fieldName}\n"
+
+def generateParser(content):
+    lines = content.split("\n")
+    structName = lines[0]
+    varName = structName[0].lower() + structName[1:]
+    fields = [line for line in lines if ':' in line]
+
+    code  = f"int parse{structName}({structName}* {varName}, const char* json, size_t jsonLen) {{\n"
+    code += "\tjsmn_parser p;\n"
+    code += "\tjsmntok_t t[128];\n\n"
+    code += "\tjsmn_init(&p);\n"
+    code += "\tint tokCount = jsmn_parse(&p, json, jsonLen, t, sizeof(t) / sizeof(t[0]));\n"
+    code += "\tif (tokCount < 0) return -1;\n"
+    code += "\tif (tokCount < 1 || t[0].type != JSMN_OBJECT) return -1;\n\n"
+    code += "\tfor (int i = 1; i < tokCount; ++i) {\n"
+
+    first = True
+    for field_line in fields:
+        fieldName = field_line.split(':')[0].strip('\t "')
+        fieldValue = field_line.split(':')[1].strip('\t ,')
+        fieldType = typeFromValue(fieldValue)
+
+        elsePrefix = "" if first else "else "
+        first = False
+
+        code += f'\t\t{elsePrefix}if (t[i].type == JSMN_STRING && (int)strlen("{fieldName}") == t[i].end - t[i].start &&\n'
+        code += f'\t\t\t\tstrncmp(json + t[i].start, "{fieldName}", t[i].end - t[i].start) == 0) {{\n'
+        code += parseAssignment(varName, fieldName, fieldType)
+        code += "\t\t}\n"
+
+    code += "\t}\n"
+    code += "\treturn 0;\n"
+    code += "}\n"
+    return code
+
+def toStringFormat(fieldName, fieldType):
+    if fieldType == 'char*':
+        return '%s'
+    elif fieldType == 'uint64_t':
+        return '%lu'
+    elif fieldType == 'char**':
+        return '[...]'
+    else:
+        return '%p'
+
+def generateToString(content):
+    lines = content.split("\n")
+    structName = lines[0]
+    varName = structName[0].lower() + structName[1:]
+    fields = [line for line in lines if ':' in line]
+
+    fieldEntries = []
+    fieldArgs = []
+    for field_line in fields:
+        fieldName = field_line.split(':')[0].strip('\t "')
+        fieldValue = field_line.split(':')[1].strip('\t ,')
+        fieldType = typeFromValue(fieldValue)
+        fmt = toStringFormat(fieldName, fieldType)
+        fieldEntries.append(f"\\t{fieldName}: {fmt}")
+        if fieldType != 'char**':
+            fieldArgs.append(f"\t\t{varName}->{fieldName}")
+
+    fmtStr = f'{structName}: {{\\n' + ',\\n'.join(fieldEntries) + '\\n}'
+
+    code  = f"char* {structName}ToString({structName}* {varName}) {{\n"
+    code += f'\treturn temp_sprintf("{fmtStr}",\n'
+    code += ',\n'.join(fieldArgs) + '\n'
+    code += "\t);\n"
+    code += "}\n"
+    return code
+
 def generateDtos():
-    dtosCode = "#ifndef DTO_H\n#define DTO_H\n\n"
+    dtosCode = "#ifndef DTO_H\n#define DTO_H\n\n#include \"../thirdparty/jsmn.h\"\n\n"
     directoryPath = Path("./resources/dto")
     filesList = [p for p in directoryPath.iterdir() if p.is_file()]
-    dtosCode += '\n'.join([generateStruct(fp) for fp in filesList])
+    contents = [readDtoFile(fp) for fp in filesList]
+    contents = [c for c in contents if c is not None]
+
+    dtosCode += '\n'.join([generateStruct(c) for c in contents])
+
+    dtosCode += "\n#ifdef DTO_IMPL\n\n"
+    dtosCode += '\n'.join([generateParser(c) for c in contents])
+    dtosCode += '\n'
+    dtosCode += '\n'.join([generateToString(c) for c in contents])
+    dtosCode += "\n#endif //DTO_IMPL\n"
+
     dtosCode += '\n#endif //DTO_H'
 
     with open(dtoFP, "w") as file:
