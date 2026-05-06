@@ -41,7 +41,9 @@ int main(int argc, char** argv) {
 
 	}
 
-	cmd_append(&cmd, "gcc", "-fopenmp", "-Wall", "-Wextra", "-O3", "-o", BUILD_FOLDER"worker", SRC_FOLDER"main.c");
+	cmd_append(&cmd, "gcc", "-fopenmp", "-Wall", "-Wextra", "-O2",
+		"-o", BUILD_FOLDER"worker", SRC_FOLDER"main.c",
+		"-lrabbitmq", "-lpthread");
 	if (!cmd_run(&cmd)) {
 		return EXIT_FAILURE;
 	}

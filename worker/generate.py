@@ -14,17 +14,18 @@ def generateInstpowCode():
     instpowCode += "uint64_t instantPow(int pow);\nint getMaxPow(void);\n#ifdef INSTPOW_IMPL\n"
     instpowCode += f"uint64_t pows[{maxPow}] = {{\n"
     instpowCode += pows
+    max_pow_val = int(maxPow)
     instpowCode += f"""
-    \n\nint maxPow = {len(pows.split(',\n'))};
-    
+    \n\nint maxPow = {max_pow_val};
+
         uint64_t instantPow(int pow) {{
             if (pow > maxPow) {{
                 return -1;
             }}
-        
+
             return pows[pow];
         }}
-        
+
         int getMaxPow(void) {{
             return maxPow;
         }}
@@ -171,7 +172,7 @@ def generateToString(content):
     return code
 
 def generateDtos():
-    dtosCode = "#ifndef DTO_H\n#define DTO_H\n\n#include \"../thirdparty/jsmn.h\"\n\n"
+    dtosCode = "#ifndef DTO_H\n#define DTO_H\n\n#include <stdint.h>\n#include <stddef.h>\n#include <string.h>\n#include \"../thirdparty/jsmn.h\"\n\n"
     directoryPath = Path("./resources/dto")
     filesList = [p for p in directoryPath.iterdir() if p.is_file()]
     contents = [readDtoFile(fp) for fp in filesList]

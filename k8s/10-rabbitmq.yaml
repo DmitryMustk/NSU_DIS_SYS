@@ -1,0 +1,92 @@
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rabbitmq-creds
+  namespace: crack
+type: Opaque
+stringData:
+  username: guest
+  password: guest
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-conf
+  namespace: crack
+data:
+  rabbitmq.conf: |
+    # Persistent (lazy) queues + classic queue durability are sufficient for
+    # the assignment; messages are flagged persistent by clients.
+    listeners.tcp.default = 5672
+    management.tcp.port   = 15672
+    log.console = true
+    log.console.level = info
+  enabled_plugins: |
+    [rabbitmq_management,rabbitmq_prometheus].
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: crack
+spec:
+  selector: { app: rabbitmq }
+  ports:
+    - { name: amqp, port: 5672, targetPort: 5672 }
+    - { name: mgmt, port: 15672, targetPort: 15672 }
+    - { name: prom, port: 15692, targetPort: 15692 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rabbitmq
+  namespace: crack
+spec:
+  serviceName: rabbitmq
+  replicas: 1
+  selector: { matchLabels: { app: rabbitmq } }
+  template:
+    metadata:
+      labels: { app: rabbitmq }
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3.13-management
+          ports:
+            - { containerPort: 5672, name: amqp }
+            - { containerPort: 15672, name: mgmt }
+            - { containerPort: 15692, name: prom }
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              valueFrom: { secretKeyRef: { name: rabbitmq-creds, key: username } }
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom: { secretKeyRef: { name: rabbitmq-creds, key: password } }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/rabbitmq }
+            - { name: conf, mountPath: /etc/rabbitmq/rabbitmq.conf, subPath: rabbitmq.conf }
+            - { name: conf, mountPath: /etc/rabbitmq/enabled_plugins, subPath: enabled_plugins }
+          readinessProbe:
+            exec: { command: ["rabbitmq-diagnostics", "-q", "ping"] }
+            periodSeconds: 5
+            initialDelaySeconds: 15
+          livenessProbe:
+            exec: { command: ["rabbitmq-diagnostics", "-q", "status"] }
+            periodSeconds: 30
+            initialDelaySeconds: 60
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits:   { cpu: "1",  memory: 1Gi }
+      volumes:
+        - name: conf
+          configMap:
+            name: rabbitmq-conf
+            items:
+              - { key: rabbitmq.conf, path: rabbitmq.conf }
+              - { key: enabled_plugins, path: enabled_plugins }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: 2Gi } }

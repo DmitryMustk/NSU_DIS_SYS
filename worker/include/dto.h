@@ -1,6 +1,9 @@
 #ifndef DTO_H
 #define DTO_H
 
+#include <stdint.h>
+#include <stddef.h>
+#include <string.h>
 #include "../thirdparty/jsmn.h"
 
 typedef struct Task {
