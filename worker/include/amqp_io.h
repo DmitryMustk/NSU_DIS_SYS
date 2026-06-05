@@ -12,9 +12,9 @@ typedef struct {
 	const char* vhost;
 	const char* task_queue;
 	const char* result_queue;
-	const char* exchange;       // direct exchange name (may be "" for default)
-	const char* task_rk;        // routing key for tasks (= task_queue when using default exchange)
-	const char* result_rk;      // routing key for results
+	const char* exchange;
+	const char* task_rk;
+	const char* result_rk;
 	uint16_t    prefetch;
 	int         heartbeat_sec;
 } AmqpCfg;

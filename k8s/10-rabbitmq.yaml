@@ -16,8 +16,6 @@ metadata:
   namespace: crack
 data:
   rabbitmq.conf: |
-    # Persistent (lazy) queues + classic queue durability are sufficient for
-    # the assignment; messages are flagged persistent by clients.
     listeners.tcp.default = 5672
     management.tcp.port   = 15672
     log.console = true
@@ -68,12 +66,16 @@ spec:
             - { name: conf, mountPath: /etc/rabbitmq/enabled_plugins, subPath: enabled_plugins }
           readinessProbe:
             exec: { command: ["rabbitmq-diagnostics", "-q", "ping"] }
-            periodSeconds: 5
-            initialDelaySeconds: 15
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 3
           livenessProbe:
-            exec: { command: ["rabbitmq-diagnostics", "-q", "status"] }
-            periodSeconds: 30
+            exec: { command: ["rabbitmq-diagnostics", "-q", "ping"] }
             initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 15
+            failureThreshold: 3
           resources:
             requests: { cpu: 100m, memory: 256Mi }
             limits:   { cpu: "1",  memory: 1Gi }

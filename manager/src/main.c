@@ -47,7 +47,7 @@ typedef struct {
 
 static void* consumer_thread(void* arg) {
 	ConsumerArgs* a = (ConsumerArgs*)arg;
-	result_consumer_run(a->sub, a->mongo, a->stop, /*drain*/ 0, 0);
+	result_consumer_run(a->sub, a->mongo, a->stop, 0, 0);
 	return NULL;
 }
 
